@@ -27,6 +27,9 @@ from horizon.utils import filters
 from openstack_dashboard.contrib.trove import api
 from openstack_dashboard.contrib.trove.content.database_backups \
     import tables as backup_tables
+from openstack_dashboard.contrib.trove.content.databases import db_capability
+from openstack_dashboard.contrib.trove.content.databases.upgrade \
+    import tables as upgrade_tables
 
 
 ACTIVE_STATES = ("ACTIVE",)
@@ -155,7 +158,8 @@ class EjectReplicaSource(tables.BatchAction):
     classes = ('btn-danger', 'btn-eject-replica-source')
 
     def _allowed(self, request, instance=None):
-        return (hasattr(instance, 'replicas'))
+        return (instance.status != 'PROMOTE'
+                and hasattr(instance, 'replicas'))
 
     def action(self, request, obj_id):
         api.trove.eject_replica_source(request, obj_id)
@@ -189,9 +193,12 @@ class GrantAccess(tables.BatchAction):
     def action(self, request, obj_id):
         instance_id = self.table.kwargs['instance_id']
         user_name = self.table.kwargs['user_name']
-
+        user_host = self.table.kwargs['user_host']
+        instance = api.trove.instance_get(request, instance_id)
+        username = db_capability.get_fully_qualified_username(
+            instance.datastore['type'], user_name, user_host)
         api.trove.user_grant_access(
-            request, instance_id, user_name, [obj_id], None)
+            request, instance_id, username, [obj_id], None)
 
 
 class RevokeAccess(tables.BatchAction):
@@ -222,9 +229,12 @@ class RevokeAccess(tables.BatchAction):
     def action(self, request, obj_id):
         instance_id = self.table.kwargs['instance_id']
         user_name = self.table.kwargs['user_name']
-
+        user_host = self.table.kwargs['user_host']
+        instance = api.trove.instance_get(request, instance_id)
+        username = db_capability.get_fully_qualified_username(
+            instance.datastore['type'], user_name, user_host)
         api.trove.user_revoke_access(
-            request, instance_id, user_name, obj_id, None)
+            request, instance_id, username, obj_id, None)
 
 
 class AccessTable(tables.DataTable):
@@ -249,7 +259,8 @@ class ManageAccess(tables.LinkAction):
     def get_link_url(self, datum):
         user = datum
         return urlresolvers.reverse(self.url, args=[user.instance.id,
-                                                    user.name])
+                                                    user.name,
+                                                    user.host])
 
 
 class CreateUser(tables.LinkAction):
@@ -282,7 +293,8 @@ class EditUser(tables.LinkAction):
     def get_link_url(self, datum):
         user = datum
         return urlresolvers.reverse(self.url, args=[user.instance.id,
-                                                    user.name])
+                                                    user.name,
+                                                    user.host])
 
 
 class DeleteUser(tables.DeleteAction):
@@ -303,8 +315,10 @@ class DeleteUser(tables.DeleteAction):
         )
 
     def delete(self, request, obj_id):
-        datum = self.table.get_object_by_id(obj_id)
-        api.trove.user_delete(request, datum.instance.id, datum.name)
+        user = self.table.get_object_by_id(obj_id)
+        username = db_capability.get_fully_qualified_username(
+            user.instance.datastore['type'], user.name, user.host)
+        api.trove.user_delete(request, user.instance.id, username)
 
 
 class CreateDatabase(tables.LinkAction):
@@ -630,6 +644,7 @@ class InstancesTable(tables.DataTable):
                        PromoteToReplicaSource,
                        EjectReplicaSource,
                        ManageRoot,
+                       upgrade_tables.UpgradeInstanceAction,
                        RestartInstance,
                        DetachReplica,
                        TerminateInstance)

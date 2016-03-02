@@ -18,11 +18,14 @@ from django.conf.urls import url
 
 from openstack_dashboard.contrib.trove.content.databases.logs \
     import urls as logs_urls
+from openstack_dashboard.contrib.trove.content.databases.upgrade \
+    import urls as upgrade_urls
 from openstack_dashboard.contrib.trove.content.databases import views
 
 BASEINSTANCES = r'^(?P<instance_id>[^/]+)/%s'
 INSTANCES = BASEINSTANCES + '$'
-USERS = r'^(?P<instance_id>[^/]+)/(?P<user_name>[^/]+)/%s$'
+BASE_USER = r'^(?P<instance_id>[^/]+)/(?P<user_name>[^/]+)'
+USERS = BASE_USER + '/%s$'
 
 
 urlpatterns = patterns(
@@ -41,9 +44,11 @@ urlpatterns = patterns(
         name='resize_instance'),
     url(INSTANCES % 'create_user', views.CreateUserView.as_view(),
         name='create_user'),
-    url(USERS % 'edit_user', views.EditUserView.as_view(),
+    url(BASE_USER + '/(?P<user_host>[^/]+)/%s$' % 'edit_user',
+        views.EditUserView.as_view(),
         name='edit_user'),
-    url(USERS % 'access_detail', views.AccessDetailView.as_view(),
+    url(BASE_USER + '/(?P<user_host>[^/]+)/%s$' % 'access_detail',
+        views.AccessDetailView.as_view(),
         name='access_detail'),
     url(INSTANCES % 'attach_config', views.AttachConfigurationView.as_view(),
         name='attach_config'),
@@ -53,4 +58,6 @@ urlpatterns = patterns(
     url(INSTANCES % 'manage_root', views.ManageRootView.as_view(),
         name='manage_root'),
     url(BASEINSTANCES % 'logs/', include(logs_urls, namespace='logs')),
+    url(BASEINSTANCES % 'upgrade/',
+        include(upgrade_urls, namespace='upgrade')),
 )

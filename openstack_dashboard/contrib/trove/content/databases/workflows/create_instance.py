@@ -33,6 +33,14 @@ from openstack_dashboard.dashboards.project.instances \
 LOG = logging.getLogger(__name__)
 
 
+def parse_datastore_and_version_text(datastore_and_version):
+    if datastore_and_version:
+        datastore = datastore_and_version.split('-', 1)[0]
+        datastore_version = datastore_and_version.split('-', 1)[1]
+        return datastore.strip(), datastore_version.strip()
+    return None, None
+
+
 class SetInstanceDetailsAction(workflows.Action):
     name = forms.CharField(max_length=80, label=_("Instance Name"))
     volume = forms.IntegerField(label=_("Volume Size"),
@@ -50,6 +58,23 @@ class SetInstanceDetailsAction(workflows.Action):
             'class': 'switchable',
             'data-slug': 'datastore'
         }))
+
+    def __init__(self, request, *args, **kwargs):
+        super(SetInstanceDetailsAction, self).__init__(request,
+                                                       *args,
+                                                       **kwargs)
+        # add this field to the end after the dynamic fields
+        self.fields['locality'] = forms.ChoiceField(
+            label=_("Locality"),
+            choices=[("", "None"),
+                     ("affinity", "affinity"),
+                     ("anti-affinity", "anti-affinity")],
+            required=False,
+            help_text=_("Specify whether future replicated instances will "
+                        "be created on the same hypervisor (affinity) or on "
+                        "different hypervisors (anti-affinity).  "
+                        "This value is ignored if the instance to be "
+                        "launched is a replica."))
 
     class Meta(object):
         name = _("Details")
@@ -69,6 +94,9 @@ class SetInstanceDetailsAction(workflows.Action):
             if not flavor:
                 msg = _("You must select a flavor.")
                 self._errors[field_name] = self.error_class([msg])
+
+        if not self.data.get("locality", None):
+            self.cleaned_data["locality"] = None
 
         return self.cleaned_data
 
@@ -184,11 +212,7 @@ class SetInstanceDetailsAction(workflows.Action):
         return datastore + ' - ' + datastore_version
 
     def _parse_datastore_display_text(self, datastore_and_version):
-        if datastore_and_version:
-            datastore = datastore_and_version.split('-')[0]
-            datastore_version = datastore_and_version.split('-')[1]
-            return datastore.strip(), datastore_version.strip()
-        return None, None
+        return parse_datastore_and_version_text(datastore_and_version)
 
     def _build_widget_field_name(self, datastore, datastore_version):
         return self._build_datastore_display_text(
@@ -206,7 +230,8 @@ TROVE_ADD_PERMS = TROVE_ADD_USER_PERMS + TROVE_ADD_DATABASE_PERMS
 
 class SetInstanceDetails(workflows.Step):
     action_class = SetInstanceDetailsAction
-    contributes = ("name", "volume", "volume_type", "flavor", "datastore")
+    contributes = ("name", "volume", "volume_type", "flavor", "datastore",
+                   "locality")
 
 
 class SetNetworkAction(workflows.Action):
@@ -362,7 +387,12 @@ class AdvancedAction(workflows.Action):
     def populate_config_choices(self, request, context):
         try:
             configs = api.trove.configuration_list(request)
-            choices = [(c.id, c.name) for c in configs]
+            config_name = "%(name)s (%(datastore)s - %(version)s)"
+            choices = [(c.id,
+                        config_name % {'name': c.name,
+                                       'datastore': c.datastore_name,
+                                       'version': c.datastore_version_name})
+                       for c in configs]
         except Exception:
             choices = []
 
@@ -386,11 +416,29 @@ class AdvancedAction(workflows.Action):
             choices.insert(0, ("", _("No backups available")))
         return choices
 
+    def _get_instances(self):
+        instances = []
+        try:
+            instances = api.trove.instance_list(self.request)
+            marker = instances.next
+            while marker or False:
+                temp_instances = api.trove.instance_list(self.request,
+                                                         marker=marker)
+                marker = temp_instances.next
+                instances.items += temp_instances.items
+                instances.links = temp_instances.links
+            instances.next = None
+        except Exception:
+            msg = _('Unable to retrieve database instances.')
+            exceptions.handle(self.request, msg)
+        return instances
+
     def populate_master_choices(self, request, context):
         try:
-            instances = api.trove.instance_list(request)
-            choices = [(i.id, i.name) for i in
-                       instances if i.status == 'ACTIVE']
+            instances = self._get_instances()
+            choices = sorted([(i.id, i.name) for i in
+                             instances if i.status == 'ACTIVE'],
+                             key=lambda i: i[1])
         except Exception:
             choices = []
 
@@ -546,23 +594,34 @@ class LaunchInstance(workflows.Workflow):
             volume_type = context['volume_type']
         return volume_type
 
+    def _get_locality(self, context):
+        # if creating a replica from a master then always set to None
+        if context.get('master'):
+            return None
+
+        locality = None
+        if context.get('locality'):
+            locality = context['locality']
+        return locality
+
     def handle(self, request, context):
         try:
-            datastore = self.context['datastore'].split('-')[0]
-            datastore_version = self.context['datastore'].split('-')[1]
+            datastore, datastore_version = (
+                parse_datastore_and_version_text(self.context['datastore']))
             LOG.info("Launching database instance with parameters "
                      "{name=%s, volume=%s, volume_type=%s, flavor=%s, "
                      "datastore=%s, datastore_version=%s, "
                      "dbs=%s, users=%s, "
                      "backups=%s, nics=%s, "
-                     "replica_of=%s, configuration=%s, replica_count=%s}",
+                     "replica_of=%s, configuration=%s, replica_count=%s,"
+                     "locality=%s}",
                      context['name'], context['volume'],
                      context['volume_type'], context['flavor'],
                      datastore, datastore_version,
                      self._get_databases(context), self._get_users(context),
                      self._get_backup(context), self._get_nics(context),
                      context.get('master'), self._get_config(context),
-                     context['replica_count'])
+                     context['replica_count'], self._get_locality(context))
             api.trove.instance_create(request,
                                       context['name'],
                                       context['volume'],
@@ -577,7 +636,8 @@ class LaunchInstance(workflows.Workflow):
                                       configuration=self._get_config(context),
                                       replica_count=context['replica_count'],
                                       volume_type=self._get_volume_type(
-                                          context))
+                                          context),
+                                      locality=self._get_locality(context))
             return True
         except Exception:
             exceptions.handle(request)

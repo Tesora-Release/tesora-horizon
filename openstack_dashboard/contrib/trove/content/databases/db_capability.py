@@ -13,27 +13,45 @@
 #    under the License.
 
 
+CASSANDRA = "cassandra"
+COUCHBASE = "couchbase"
+DSE = "dse"
 MARIA = "maria"
 MONGODB = "mongodb"
 MYSQL = "mysql"
 ORACLE = "oracle"
 ORACLE_RA = "oracle_ra"
 PERCONA = "percona"
+PERCONA_CLUSTER = "pxc"
+REDIS = "redis"
 VERTICA = "vertica"
 
 _mysql_compatible_datastores = (MYSQL, MARIA, PERCONA)
+_cluster_capable_datastores = (CASSANDRA, COUCHBASE, DSE, MONGODB,
+                               PERCONA_CLUSTER, REDIS, VERTICA)
+_cluster_grow_shrink_capable_datastores = (CASSANDRA, COUCHBASE, DSE, MONGODB,
+                                           REDIS)
 
 
 def can_backup(datastore):
-    if is_oracle_datastore(datastore):
+    if is_oracle_ra_datastore(datastore):
         return False
     return True
 
 
 def can_launch_from_master(datastore):
-    if is_oracle_datastore(datastore):
+    if is_oracle_ra_datastore(datastore):
         return False
     return True
+
+
+def can_modify_cluster(datastore):
+    if datastore is not None:
+        datastore_lower = datastore.lower()
+        for ds in _cluster_grow_shrink_capable_datastores:
+            if ds in datastore_lower:
+                return True
+    return False
 
 
 def db_required_when_creating_user(datastore):
@@ -46,6 +64,18 @@ def require_configuration_group(datastore):
     if is_oracle_ra_datastore(datastore):
         return True
     return False
+
+
+def is_cassandra_datastore(datastore):
+    return (datastore is not None) and (CASSANDRA in datastore.lower())
+
+
+def is_couchbase_datastore(datastore):
+    return (datastore is not None) and (COUCHBASE in datastore.lower())
+
+
+def is_datastax_enterprise(datastore):
+    return (datastore is not None) and (DSE in datastore.lower())
 
 
 def is_oracle_datastore(datastore):
@@ -68,5 +98,28 @@ def is_mongodb_datastore(datastore):
     return (datastore is not None) and (MONGODB in datastore.lower())
 
 
+def is_percona_cluster_datastore(datastore):
+    return (datastore is not None) and (PERCONA_CLUSTER in datastore.lower())
+
+
+def is_redis_datastore(datastore):
+    return (datastore is not None) and (REDIS in datastore.lower())
+
+
 def is_vertica_datastore(datastore):
     return (datastore is not None) and (VERTICA in datastore.lower())
+
+
+def is_cluster_capable_datastore(datastore):
+    if datastore is not None:
+        datastore_lower = datastore.lower()
+        for ds in _cluster_capable_datastores:
+            if ds in datastore_lower:
+                return True
+    return False
+
+
+def get_fully_qualified_username(datastore, user_name, user_host):
+    if is_mysql_compatible(datastore):
+        return user_name + '@' + user_host
+    return user_name

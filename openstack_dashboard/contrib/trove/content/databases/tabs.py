@@ -67,6 +67,8 @@ class OverviewTab(tabs.Tab):
         elif db_capability.is_oracle_datastore(datastore) or \
                 db_capability.is_oracle_ra_datastore(datastore):
             return 'oracle'
+        elif db_capability.is_datastax_enterprise(datastore):
+            return 'cassandra'
 
         return datastore
 
@@ -86,15 +88,16 @@ class UserTab(tabs.TableTab):
             for user in data:
                 user.instance = instance
                 try:
+                    username = db_capability.get_fully_qualified_username(
+                        instance.datastore['type'], user.name, user.host)
                     user.access = api.trove.user_list_access(self.request,
                                                              instance.id,
-                                                             user.name)
+                                                             username)
                 except exceptions.NOT_FOUND:
                     pass
                 except Exception:
                     msg = _('Unable to get user access data.')
                     exceptions.handle(self.request, msg)
-                    data = []
         except Exception:
             msg = _('Unable to get user data.')
             exceptions.handle(self.request, msg)
@@ -188,6 +191,7 @@ class LogsTab(tabs.TableTab):
     name = _("Logs")
     slug = "logs_tab"
     template_name = "horizon/common/_detail_table.html"
+    preload = False
 
     def get_logs_data(self):
         instance = self.tab_group.kwargs['instance']
