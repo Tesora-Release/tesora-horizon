@@ -21,6 +21,7 @@ from troveclient.v1 import datastores
 from troveclient.v1 import flavors
 from troveclient.v1 import instances
 from troveclient.v1 import users
+from troveclient.v1 import volume_types
 
 from openstack_dashboard.test.test_data import utils
 
@@ -80,13 +81,14 @@ CLUSTER_DATA_ONE = {
     ],
     "task": {
         "name": "test_task"
-    }
+    },
+    "locality": "anti-affinity"
 }
 
 CLUSTER_DATA_TWO = {
     "status": "ACTIVE",
-    "id": "dfbbd9ca-b5e1-4028-adb7-f78643e17998",
-    "name": "Test Cluster",
+    "id": "dfbbd9ca-b5e1-4028-adb7-f78199182122232",
+    "name": "Test Cluster2",
     "created": "2014-04-25T20:19:23",
     "updated": "2014-04-25T20:19:23",
     "links": [],
@@ -97,7 +99,7 @@ CLUSTER_DATA_TWO = {
     "ip": ["10.0.0.1"],
     "instances": [
         {
-            "id": "416b0b16-ba55-4302-bbd3-ff566032e1c1",
+            "id": "416b0b16-ba55-4302-bbd3-ff8199182122232",
             "name": "inst1",
             "status": "ACTIVE",
             "flavor": {
@@ -109,7 +111,7 @@ CLUSTER_DATA_TWO = {
             }
         },
         {
-            "id": "965ef811-7c1d-47fc-89f2-a89dfdd23ef2",
+            "id": "965ef811-7c1d-47fc-89f2-a88199182122232",
             "name": "inst2",
             "status": "ACTIVE",
             "flavor": {
@@ -121,7 +123,7 @@ CLUSTER_DATA_TWO = {
             }
         },
         {
-            "id": "3642f41c-e8ad-4164-a089-3891bf7f2d2b",
+            "id": "3642f41c-e8ad-4164-a089-388199182122232",
             "name": "inst3",
             "status": "ACTIVE",
             "flavor": {
@@ -132,7 +134,10 @@ CLUSTER_DATA_TWO = {
                 "size": 100
             }
         }
-    ]
+    ],
+    "task": {
+        "name": "building"
+    },
 }
 
 DATABASE_DATA_ONE = {
@@ -419,6 +424,18 @@ FLAVOR_THREE = {
     "name": "test.1"
 }
 
+VOLUME_TYPE_ONE = {
+    "id": "1",
+    "name": "vol_type_1",
+    "description": "type 1 description",
+}
+
+VOLUME_TYPE_TWO = {
+    "id": "2",
+    "name": "vol_type_2",
+    "description": "type 2 description",
+}
+
 VERSION_MONGODB_2_6 = {
     "name": "2.6",
     "links": [],
@@ -489,6 +506,12 @@ def data(TEST):
     flavor1 = flavors.Flavor(flavors.Flavors(None), FLAVOR_ONE)
     flavor2 = flavors.Flavor(flavors.Flavors(None), FLAVOR_TWO)
     flavor3 = flavors.Flavor(flavors.Flavors(None), FLAVOR_THREE)
+
+    volume_type1 = volume_types.VolumeType(volume_types.VolumeTypes(None),
+                                           VOLUME_TYPE_ONE)
+    volume_type2 = volume_types.VolumeType(volume_types.VolumeTypes(None),
+                                           VOLUME_TYPE_TWO)
+
     datastore_mongodb = datastores.Datastore(datastores.Datastores(None),
                                              DATASTORE_MONGODB)
     version_mongodb_2_6 = datastores.\
@@ -515,6 +538,7 @@ def data(TEST):
     TEST.database_user_dbs = utils.TestDataContainer()
     TEST.database_user_roots = utils.TestDataContainer()
     TEST.database_flavors = utils.TestDataContainer()
+    TEST.database_volume_types = utils.TestDataContainer()
 
     TEST.databases.add(database1)
     TEST.databases.add(database2)
@@ -541,6 +565,7 @@ def data(TEST):
     TEST.database_user_dbs.add(user_db1)
     TEST.database_user_roots.add(user_root1)
     TEST.database_flavors.add(flavor1, flavor2, flavor3)
+    TEST.database_volume_types.add(volume_type1, volume_type2)
     TEST.datastores = utils.TestDataContainer()
     TEST.datastores.add(datastore_mongodb)
     TEST.datastores.add(datastore1)
@@ -548,6 +573,7 @@ def data(TEST):
     TEST.datastores.add(datastore_redis)
     TEST.datastores.add(datastore_vertica)
     TEST.database_flavors.add(flavor1, flavor2, flavor3)
+    TEST.database_volume_types.add(volume_type1, volume_type2)
     TEST.datastore_versions = utils.TestDataContainer()
     TEST.datastore_versions.add(version_vertica_7_1)
     TEST.datastore_versions.add(version_redis_3_0)

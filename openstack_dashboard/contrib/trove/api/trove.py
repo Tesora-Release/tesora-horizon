@@ -58,7 +58,7 @@ def cluster_delete(request, cluster_id):
 
 def cluster_create(request, name, volume, flavor, num_instances,
                    datastore, datastore_version,
-                   nics=None, root_password=None):
+                   nics=None, root_password=None, locality=None):
     instances = []
     for i in range(num_instances):
         instance = {}
@@ -74,7 +74,8 @@ def cluster_create(request, name, volume, flavor, num_instances,
         name,
         datastore,
         datastore_version,
-        instances=instances)
+        instances=instances,
+        locality=locality)
 
 
 def cluster_grow(request, cluster_id, new_instances):
@@ -251,6 +252,27 @@ def datastore_flavors(request, datastore_name=None,
 
 def flavor_get(request, flavor_id):
     return troveclient(request).flavors.get(flavor_id)
+
+
+def volume_type_list(request):
+    return troveclient(request).volume_types.list()
+
+
+def datastore_volume_types(request, datastore_name=None,
+                           datastore_version=None):
+    # if datastore info is available then get datastore specific types
+    if datastore_name and datastore_version:
+        try:
+            return troveclient(request).volume_types.\
+                list_datastore_version_associated_volume_types(
+                    datastore_name, datastore_version)
+        except Exception:
+            LOG.warn("Failed to retrive datastore specific volume types")
+    return volume_type_list(request)
+
+
+def volume_type_get(request, volume_type):
+    return troveclient(request).volume_types.get(volume_type)
 
 
 def root_enable(request, instance_ids):
